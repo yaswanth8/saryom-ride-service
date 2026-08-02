@@ -1,0 +1,67 @@
+spring:
+  application:
+    name: saryom-ride-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/saryom?currentSchema=rides&options=-c%20search_path%3Drides}
+    username: ${DB_USER:saryom_rides}
+    password: ${DB_PASSWORD:saryom_rides_local}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: rides
+  flyway:
+    enabled: true
+    schemas: rides
+    default-schema: rides
+  cloud:
+    stream:
+      bindings:
+        ride.posted:
+          destination: ride.posted
+        ride.booked:
+          destination: ride.booked
+        ride.cancelled:
+          destination: ride.cancelled
+        ride.booking_cancelled:
+          destination: ride.booking_cancelled
+      kafka:
+        binder:
+          brokers: ${KAFKA_BROKERS:localhost:19092}
+
+server:
+  port: ${PORT:8087}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: kafka
+  cloud:
+    stream:
+      default-binder: kafka
+---
+spring:
+  config:
+    activate:
+      on-profile: rabbit
+  cloud:
+    stream:
+      default-binder: rabbit
+  rabbitmq:
+    addresses: ${CLOUDAMQP_URL:amqp://guest:guest@localhost:5672}

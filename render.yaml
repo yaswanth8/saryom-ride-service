@@ -1,0 +1,28 @@
+# Render Blueprint — saryom-ride-service
+# Free-tier phase: dev,rabbit profile (stub auth + CloudAMQP broker), Neon Postgres.
+# Secrets (sync:false) are entered in the Render dashboard on first deploy.
+services:
+  - type: web
+    name: saryom-ride-service
+    runtime: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /actuator/health
+    autoDeploy: true
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: dev,rabbit
+      # Keep the connection pool tiny — services share Neon's free connection budget.
+      - key: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE
+        value: "3"
+      # jdbc:postgresql://<neon-host>/<db>?currentSchema=food&sslmode=require
+      - key: DB_URL
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      # amqp://user:pass@host/vhost  (from CloudAMQP)
+      - key: CLOUDAMQP_URL
+        sync: false
