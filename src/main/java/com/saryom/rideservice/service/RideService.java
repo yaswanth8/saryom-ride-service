@@ -7,6 +7,7 @@ import com.saryom.rideservice.domain.Haversine;
 import com.saryom.rideservice.domain.Ride;
 import com.saryom.rideservice.domain.RideRepository;
 import com.saryom.rideservice.domain.RideSort;
+import com.saryom.rideservice.domain.RideStatus;
 import com.saryom.rideservice.error.ConflictException;
 import com.saryom.rideservice.error.NotFoundException;
 import com.saryom.rideservice.events.BookingCancelledEvent;
@@ -113,7 +114,13 @@ public class RideService {
         Ride ride = load(id);
         Booking mine = viewerId == null ? null
                 : bookings.findByRideIdAndRiderIdAndStatus(id, viewerId, BookingStatus.CONFIRMED).orElse(null);
-        List<Booking> confirmed = bookings.findByRideIdAndStatus(id, BookingStatus.CONFIRMED);
+        // Only the driver is shown the rider list, so only the driver's request
+        // should pay for it. Loading it unconditionally meant every anonymous
+        // view of a shared ride link ran a query it then discarded — and public
+        // detail views are the common case, not the rare one.
+        List<Booking> confirmed = ride.isDrivenBy(viewerId)
+                ? bookings.findByRideIdAndStatus(id, BookingStatus.CONFIRMED)
+                : List.of();
         return RideDetailResponse.from(ride, viewerId, mine, confirmed);
     }
 
@@ -225,6 +232,29 @@ public class RideService {
                 bookings.findByRideIdAndStatus(id, BookingStatus.CONFIRMED));
     }
 
+    /**
+     * Closes a ride whose departure has passed, so it stops showing as active
+     * in the driver's and riders' own lists.
+     *
+     * <p>Its own transaction, so one failure inside a sweep cannot roll back
+     * the rest of the batch.
+     *
+     * @return true when this call performed the close. False means someone got
+     *     there first — the driver completed or cancelled it, or a concurrent
+     *     sweep on another instance won. None of those is an error.
+     */
+    @Transactional
+    public boolean closeDeparted(UUID id) {
+        Ride ride = rides.findById(id).orElse(null);
+        if (ride == null
+                || (ride.getStatus() != RideStatus.OPEN && ride.getStatus() != RideStatus.FULL)) {
+            return false;
+        }
+        ride.closeAfterDeparture(clock.instant());
+        rides.save(ride);
+        return true;
+    }
+
     @Transactional(readOnly = true)
     public List<RideCardResponse> drivenByMe(String uid) {
         return rides.findByDriverIdOrderByDepartAtDesc(uid).stream()
@@ -235,9 +265,22 @@ public class RideService {
     /** Rides the user has a live seat on. Cancelled bookings are not travel plans. */
     @Transactional(readOnly = true)
     public List<RideCardResponse> bookedByMe(String uid) {
-        return bookings.findByRiderIdOrderByCreatedAtDesc(uid).stream()
+        List<UUID> rideIds = bookings.findByRiderIdOrderByCreatedAtDesc(uid).stream()
                 .filter(Booking::isConfirmed)
-                .map(b -> rides.findById(b.getRideId()).orElse(null))
+                .map(Booking::getRideId)
+                .toList();
+        if (rideIds.isEmpty()) {
+            return List.of();
+        }
+        // One query for all of them. This was a findById per booking — a rider
+        // with twenty trips paid twenty round trips, and on Neon each of those
+        // crosses the network rather than staying on the box.
+        Map<UUID, Ride> byId = rides.findAllById(rideIds).stream()
+                .collect(Collectors.toMap(Ride::getId, r -> r));
+        // findAllById does not preserve order, so the caller's "most recent
+        // first" is restored from the booking order it was derived from.
+        return rideIds.stream()
+                .map(byId::get)
                 .filter(java.util.Objects::nonNull)
                 .map(r -> RideCardResponse.from(r, null))
                 .toList();

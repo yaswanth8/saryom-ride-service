@@ -211,6 +211,57 @@ class RideServiceTest {
     }
 
     @Test
+    void bookedRidesAreFetchedInOneQueryNotOnePerBooking() {
+        Ride a = ride(3);
+        Ride b = ride(3);
+        when(bookings.findByRiderIdOrderByCreatedAtDesc("rider-1")).thenReturn(List.of(
+                new Booking(UUID.randomUUID(), a.getId(), "rider-1", 1, NOW),
+                new Booking(UUID.randomUUID(), b.getId(), "rider-1", 1, NOW)));
+        when(rides.findAllById(any())).thenReturn(List.of(a, b));
+
+        assertThat(service.bookedByMe("rider-1")).hasSize(2);
+        // The N+1 this replaced issued one findById per booking; on a remote
+        // database that is a network round trip each.
+        verify(rides, never()).findById(any());
+        verify(rides).findAllById(any());
+    }
+
+    @Test
+    void bookedRidesKeepMostRecentFirstDespiteBatchFetching() {
+        Ride older = ride(3);
+        Ride newer = ride(3);
+        // Bookings come back newest first; findAllById makes no ordering promise,
+        // so the response order must be restored from the bookings.
+        when(bookings.findByRiderIdOrderByCreatedAtDesc("rider-1")).thenReturn(List.of(
+                new Booking(UUID.randomUUID(), newer.getId(), "rider-1", 1, NOW),
+                new Booking(UUID.randomUUID(), older.getId(), "rider-1", 1, NOW)));
+        when(rides.findAllById(any())).thenReturn(List.of(older, newer));
+
+        assertThat(service.bookedByMe("rider-1"))
+                .extracting(r -> r.id())
+                .containsExactly(newer.getId(), older.getId());
+    }
+
+    @Test
+    void bookedRidesSkipTheQueryEntirelyWhenThereAreNone() {
+        when(bookings.findByRiderIdOrderByCreatedAtDesc("rider-1")).thenReturn(List.of());
+        assertThat(service.bookedByMe("rider-1")).isEmpty();
+        verify(rides, never()).findAllById(any());
+    }
+
+    @Test
+    void aPublicViewDoesNotLoadTheRiderList() {
+        Ride r = ride(3);
+        existing(r);
+
+        service.getDetail(r.getId(), null);
+
+        // Anonymous detail views are the common case for a shared link; loading
+        // riders only to discard them made every one of them pay for a query.
+        verify(bookings, never()).findByRideIdAndStatus(any(), any());
+    }
+
+    @Test
     void anUnknownRideIsNotFound() {
         UUID missing = UUID.randomUUID();
         when(rides.findById(missing)).thenReturn(Optional.empty());
@@ -225,7 +276,9 @@ class RideServiceTest {
         Booking dead = new Booking(UUID.randomUUID(), UUID.randomUUID(), "rider-1", 1, NOW);
         dead.cancel(NOW);
         when(bookings.findByRiderIdOrderByCreatedAtDesc("rider-1")).thenReturn(List.of(live, dead));
-        when(rides.findById(r.getId())).thenReturn(Optional.of(r));
+        // Batch-fetched now rather than one findById per booking; only the live
+        // booking's ride should ever be asked for.
+        when(rides.findAllById(any())).thenReturn(List.of(r));
 
         // A cancelled booking is not a travel plan and must not appear in "my trips".
         assertThat(service.bookedByMe("rider-1")).hasSize(1);

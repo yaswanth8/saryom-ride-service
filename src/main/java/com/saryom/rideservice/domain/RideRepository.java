@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -46,4 +47,13 @@ public interface RideRepository extends JpaRepository<Ride, UUID> {
                                      @Param("now") Instant now);
 
     List<Ride> findByDriverIdOrderByDepartAtDesc(String driverId);
+
+    /**
+     * Rides still open or full whose departure has passed, oldest first.
+     *
+     * <p>Paged so one sweep cannot pull an unbounded backlog into memory — a
+     * long outage would otherwise be drained in a single enormous transaction.
+     */
+    Page<Ride> findByStatusInAndDepartAtBeforeOrderByDepartAtAsc(
+            Collection<RideStatus> statuses, Instant departedBefore, Pageable pageable);
 }

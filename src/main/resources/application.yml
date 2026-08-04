@@ -37,6 +37,17 @@ spring:
 server:
   port: ${PORT:8087}
 
+saryom:
+  rides:
+    # How long after departure a ride is left alone before the service closes
+    # it. Trips run late, and a driver marking their own trip complete an hour
+    # after setting off should not find the service already did it.
+    close-grace-hours: ${RIDE_CLOSE_GRACE_HOURS:24}
+    # Fixed delay between sweeps; runs never overlap.
+    sweep-interval-ms: ${RIDE_SWEEP_INTERVAL_MS:900000}
+    # Let the instance finish starting before the first sweep.
+    sweep-initial-delay-ms: ${RIDE_SWEEP_INITIAL_DELAY_MS:60000}
+
 management:
   endpoints:
     web:

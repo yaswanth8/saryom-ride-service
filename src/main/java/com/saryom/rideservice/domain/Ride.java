@@ -174,6 +174,22 @@ public class Ride {
         updatedAt = now;
     }
 
+    /**
+     * Ends a ride the driver never closed themselves.
+     *
+     * <p>Separate from {@link #complete} because that asserts a driver said the
+     * trip happened. This only asserts the departure time has passed and nobody
+     * acted, which is a weaker claim — so it takes no uid and performs no
+     * ownership check, and callers must not use it to bypass one.
+     */
+    public void closeAfterDeparture(Instant now) {
+        if (status != RideStatus.OPEN && status != RideStatus.FULL) {
+            return;
+        }
+        status = RideStatus.COMPLETED;
+        updatedAt = now;
+    }
+
     public void updateDetails(String originText, String destinationText, Instant departAt,
                               BigDecimal pricePerSeat, String notes, Instant now) {
         this.originText = originText;
