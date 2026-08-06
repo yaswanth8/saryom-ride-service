@@ -1,5 +1,6 @@
 package com.saryom.rideservice.web.dto;
 
+import com.saryom.rideservice.domain.BagSize;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.Max;
@@ -25,5 +26,18 @@ public record CreateRideRequest(
         // a coach service and needs different rules.
         @Min(1) @Max(8) int seatsTotal,
         @NotNull @DecimalMin("0.00") BigDecimal pricePerSeat,
-        @Size(max = 2000) String notes) {
+        @Size(max = 2000) String notes,
+        // Optional: a client that predates trip preferences still posts a valid
+        // ride, and the entity falls back to the common-case defaults.
+        BagSize bagSize,
+        Boolean smokingAllowed,
+        Boolean petsAllowed) {
+
+    public boolean smokingAllowedOrDefault() {
+        return Boolean.TRUE.equals(smokingAllowed);
+    }
+
+    public boolean petsAllowedOrDefault() {
+        return Boolean.TRUE.equals(petsAllowed);
+    }
 }

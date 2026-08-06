@@ -1,5 +1,6 @@
 package com.saryom.rideservice.service;
 
+import com.saryom.rideservice.domain.BagSize;
 import com.saryom.rideservice.domain.Ride;
 import com.saryom.rideservice.domain.RideRepository;
 import com.saryom.rideservice.domain.RideStatus;
@@ -41,7 +42,7 @@ class DepartedRideSweeperTest {
     private Ride ride(Instant departAt) {
         return new Ride(UUID.randomUUID(), "driver-1", "Chicago", null, null,
                 "Milwaukee", null, null, departAt, 3, new BigDecimal("10.00"), null,
-                departAt.minusSeconds(86_400));
+                BagSize.SMALL, false, false, departAt.minusSeconds(86_400));
     }
 
     private void staleRides(Ride... found) {

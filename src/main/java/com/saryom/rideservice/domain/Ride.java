@@ -79,6 +79,22 @@ public class Ride {
     @Column(length = 2000)
     private String notes;
 
+    /**
+     * Trip preferences: the questions a rider would otherwise have to ask in a
+     * message before booking. Non-null so a card can always render them —
+     * "unspecified" would just push the question back into the notes field,
+     * which is where these already were and why they were unusable.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "bag_size", nullable = false)
+    private BagSize bagSize;
+
+    @Column(name = "smoking_allowed", nullable = false)
+    private boolean smokingAllowed;
+
+    @Column(name = "pets_allowed", nullable = false)
+    private boolean petsAllowed;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private RideStatus status;
@@ -95,7 +111,8 @@ public class Ride {
 
     public Ride(UUID id, String driverId, String originText, Double originLat, Double originLng,
                 String destinationText, Double destinationLat, Double destinationLng,
-                Instant departAt, int seatsTotal, BigDecimal pricePerSeat, String notes, Instant now) {
+                Instant departAt, int seatsTotal, BigDecimal pricePerSeat, String notes,
+                BagSize bagSize, boolean smokingAllowed, boolean petsAllowed, Instant now) {
         this.id = id;
         this.driverId = driverId;
         this.originText = originText;
@@ -109,6 +126,11 @@ public class Ride {
         this.seatsAvailable = seatsTotal;
         this.pricePerSeat = pricePerSeat;
         this.notes = notes;
+        // Null-tolerant so an older client that does not send preferences still
+        // creates a valid ride rather than a 500.
+        this.bagSize = bagSize == null ? BagSize.SMALL : bagSize;
+        this.smokingAllowed = smokingAllowed;
+        this.petsAllowed = petsAllowed;
         this.status = RideStatus.OPEN;
         this.createdAt = now;
         this.updatedAt = now;
@@ -191,12 +213,25 @@ public class Ride {
     }
 
     public void updateDetails(String originText, String destinationText, Instant departAt,
-                              BigDecimal pricePerSeat, String notes, Instant now) {
+                              BigDecimal pricePerSeat, String notes,
+                              BagSize bagSize, Boolean smokingAllowed, Boolean petsAllowed,
+                              Instant now) {
         this.originText = originText;
         this.destinationText = destinationText;
         this.departAt = departAt;
         this.pricePerSeat = pricePerSeat;
         this.notes = notes;
+        // Preferences are patch-style: an omitted field keeps its current value,
+        // so a client that predates them cannot silently reset a driver's rules.
+        if (bagSize != null) {
+            this.bagSize = bagSize;
+        }
+        if (smokingAllowed != null) {
+            this.smokingAllowed = smokingAllowed;
+        }
+        if (petsAllowed != null) {
+            this.petsAllowed = petsAllowed;
+        }
         this.updatedAt = now;
     }
 
@@ -269,6 +304,18 @@ public class Ride {
 
     public String getNotes() {
         return notes;
+    }
+
+    public BagSize getBagSize() {
+        return bagSize;
+    }
+
+    public boolean isSmokingAllowed() {
+        return smokingAllowed;
+    }
+
+    public boolean isPetsAllowed() {
+        return petsAllowed;
     }
 
     public RideStatus getStatus() {

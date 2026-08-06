@@ -11,6 +11,7 @@ import com.saryom.rideservice.web.dto.RideDetailResponse;
 import com.saryom.rideservice.web.dto.UpdateRideRequest;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -41,12 +43,17 @@ public class RideController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) Integer seats,
             @RequestParam(defaultValue = "DEPARTING_SOON") RideSort sort,
+            // A date window is how people actually shop for a ride ("anything
+            // Friday?"); sorting alone made them scroll past a week of results.
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant departAfter,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant departBefore,
             @RequestParam(required = false) Double lat,
             @RequestParam(required = false) Double lng,
             @RequestParam(required = false) Double radiusMiles,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "24") int size) {
-        return rideService.browse(q, seats, sort, lat, lng, radiusMiles, page, size);
+        return rideService.browse(q, seats, sort, departAfter, departBefore,
+                lat, lng, radiusMiles, page, size);
     }
 
     /** Rides the caller is driving. */
