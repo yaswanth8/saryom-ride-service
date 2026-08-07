@@ -1,5 +1,6 @@
 package com.saryom.rideservice.domain;
 
+import com.saryom.rideservice.domain.BagSize;
 import com.saryom.rideservice.error.ConflictException;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.AccessDeniedException;
@@ -19,7 +20,7 @@ class RideTest {
 
     private Ride ride(int seats) {
         return new Ride(UUID.randomUUID(), "driver-1", "Chicago", 41.87, -87.62,
-                "Milwaukee", 43.04, -87.90, DEPART, seats, new BigDecimal("12.50"), null, NOW);
+                "Milwaukee", 43.04, -87.90, DEPART, seats, new BigDecimal("12.50"), null, BagSize.SMALL, false, false, NOW);
     }
 
     @Test

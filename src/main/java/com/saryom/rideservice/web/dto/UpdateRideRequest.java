@@ -1,5 +1,6 @@
 package com.saryom.rideservice.web.dto;
 
+import com.saryom.rideservice.domain.BagSize;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.NotBlank;
@@ -19,5 +20,10 @@ public record UpdateRideRequest(
         @NotBlank @Size(max = 200) String destinationText,
         @NotNull @Future Instant departAt,
         @NotNull @DecimalMin("0.00") BigDecimal pricePerSeat,
-        @Size(max = 2000) String notes) {
+        @Size(max = 2000) String notes,
+        // Null means "leave as-is" rather than "reset", so an older client
+        // editing a route cannot wipe preferences it does not know exist.
+        BagSize bagSize,
+        Boolean smokingAllowed,
+        Boolean petsAllowed) {
 }
