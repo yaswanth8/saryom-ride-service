@@ -14,6 +14,7 @@ import com.saryom.rideservice.events.BookingCancelledEvent;
 import com.saryom.rideservice.events.DomainEventPublisher;
 import com.saryom.rideservice.events.RideBookedEvent;
 import com.saryom.rideservice.events.RideCancelledEvent;
+import com.saryom.rideservice.events.RideCompletedEvent;
 import com.saryom.rideservice.events.RidePostedEvent;
 import com.saryom.rideservice.web.dto.BookSeatsRequest;
 import com.saryom.rideservice.web.dto.BookingResponse;
@@ -257,9 +258,25 @@ public class RideService {
         Ride ride = load(id);
         ride.complete(uid, clock.instant());
         Ride saved = rides.save(ride);
-        return RideDetailResponse.from(saved, uid, null,
-                bookings.findByRideIdAndStatus(id, BookingStatus.CONFIRMED),
+        List<Booking> confirmed = bookings.findByRideIdAndStatus(id, BookingStatus.CONFIRMED);
+        announceCompletion(saved, confirmed, true);
+        return RideDetailResponse.from(saved, uid, null, confirmed,
                 rides.countByDriverIdAndStatus(saved.getDriverId(), RideStatus.COMPLETED));
+    }
+
+    /**
+     * Announces who actually travelled together.
+     *
+     * <p>Only riders holding a confirmed booking are named: someone who
+     * cancelled never got in the car, and treating them as a participant would
+     * let them review a driver they never met.
+     */
+    private void announceCompletion(Ride ride, List<Booking> confirmed, boolean driverClosed) {
+        List<String> riderIds = confirmed.stream().map(Booking::getRiderId).distinct().toList();
+        events.publish("ride.completed", RideCompletedEvent.of(
+                ride.getId(), ride.getDriverId(), riderIds,
+                ride.getOriginText(), ride.getDestinationText(),
+                ride.getDepartAt(), driverClosed));
     }
 
     /**
@@ -282,6 +299,9 @@ public class RideService {
         }
         ride.closeAfterDeparture(clock.instant());
         rides.save(ride);
+        // A swept ride is still a trip that happened, so it announces itself the
+        // same way — flagged as not driver-closed, since nobody asserted it ran.
+        announceCompletion(ride, bookings.findByRideIdAndStatus(id, BookingStatus.CONFIRMED), false);
         return true;
     }
 
