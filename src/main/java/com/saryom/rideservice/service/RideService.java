@@ -14,6 +14,7 @@ import com.saryom.rideservice.events.BookingCancelledEvent;
 import com.saryom.rideservice.events.DomainEventPublisher;
 import com.saryom.rideservice.events.RideBookedEvent;
 import com.saryom.rideservice.events.RideCancelledEvent;
+import com.saryom.rideservice.events.RideChangedEvent;
 import com.saryom.rideservice.events.RideCompletedEvent;
 import com.saryom.rideservice.events.RidePostedEvent;
 import com.saryom.rideservice.web.dto.BookSeatsRequest;
@@ -30,6 +31,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -164,17 +166,54 @@ public class RideService {
                 rides.countByDriverIdAndStatus(driverId, RideStatus.COMPLETED));
     }
 
+    /**
+     * Edits a ride, telling anyone already booked on it what changed.
+     *
+     * <p>The old departure and price are captured before the update because they
+     * are the two edits that can strand a rider or cost them money, and the
+     * announcement is worthless without the before-and-after. Cancelling a ride
+     * has always notified its riders; changing it used to be silent, which is
+     * worse — the rider still believes they have a plan.
+     */
     @Transactional
     public RideDetailResponse update(UUID id, String uid, UpdateRideRequest req) {
         Ride ride = load(id);
         ride.requireDriver(uid);
+        Instant oldDepartAt = ride.getDepartAt();
+        BigDecimal oldPrice = ride.getPricePerSeat();
+
         ride.updateDetails(req.originText(), req.destinationText(), req.departAt(),
                 req.pricePerSeat(), req.notes(),
                 req.bagSize(), req.smokingAllowed(), req.petsAllowed(), clock.instant());
         Ride saved = rides.save(ride);
-        return RideDetailResponse.from(saved, uid, null,
-                bookings.findByRideIdAndStatus(id, BookingStatus.CONFIRMED),
+
+        List<Booking> confirmed = bookings.findByRideIdAndStatus(id, BookingStatus.CONFIRMED);
+        announceChange(saved, confirmed, oldDepartAt, oldPrice);
+
+        return RideDetailResponse.from(saved, uid, null, confirmed,
                 rides.countByDriverIdAndStatus(saved.getDriverId(), RideStatus.COMPLETED));
+    }
+
+    /**
+     * Publishes {@code ride.changed} when the terms actually moved and there is
+     * somebody to tell.
+     *
+     * <p>Silent on a ride nobody booked — there is no plan to disrupt — and
+     * silent when only the notes or route text were reworded, because a push for
+     * every reworded note is a push nobody reads.
+     */
+    private void announceChange(Ride ride, List<Booking> confirmed,
+                                Instant oldDepartAt, BigDecimal oldPrice) {
+        if (confirmed.isEmpty()) {
+            return;
+        }
+        RideChangedEvent event = RideChangedEvent.of(ride.getId(), ride.getDriverId(),
+                confirmed.stream().map(Booking::getRiderId).toList(),
+                ride.getOriginText(), ride.getDestinationText(),
+                oldDepartAt, ride.getDepartAt(), oldPrice, ride.getPricePerSeat());
+        if (event.departureMoved() || event.priceChanged()) {
+            events.publish("ride.changed", event);
+        }
     }
 
     /**
