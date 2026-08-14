@@ -13,6 +13,7 @@ import com.saryom.rideservice.events.BookingCancelledEvent;
 import com.saryom.rideservice.events.DomainEventPublisher;
 import com.saryom.rideservice.events.RideBookedEvent;
 import com.saryom.rideservice.events.RideCancelledEvent;
+import com.saryom.rideservice.events.RideCompletedEvent;
 import com.saryom.rideservice.events.RidePostedEvent;
 import com.saryom.rideservice.web.dto.BookSeatsRequest;
 import com.saryom.rideservice.web.dto.CreateRideRequest;
@@ -405,5 +406,54 @@ class RideServiceTest {
         // holding the previous bundle has to keep working through the rollout.
         assertThat(detail.mySeats()).isEqualTo(2);
         assertThat(detail.myseats()).isEqualTo(detail.mySeats());
+    }
+
+    @Test
+    void completingARideNamesEveryoneWhoActuallyTravelled() {
+        Ride r = ride(3);
+        existing(r);
+        Booking rode = new Booking(UUID.randomUUID(), r.getId(), "rider-1", 1, NOW);
+        when(bookings.findByRideIdAndStatus(r.getId(), BookingStatus.CONFIRMED))
+                .thenReturn(List.of(rode));
+
+        service.complete(r.getId(), "driver-1");
+
+        ArgumentCaptor<RideCompletedEvent> event = ArgumentCaptor.forClass(RideCompletedEvent.class);
+        verify(events).publish(eq("ride.completed"), event.capture());
+        // "These people travelled together" is the fact a review has to be
+        // earned against; without it a rating is just an assertion.
+        assertThat(event.getValue().driverId()).isEqualTo("driver-1");
+        assertThat(event.getValue().riderIds()).containsExactly("rider-1");
+        assertThat(event.getValue().driverClosed()).isTrue();
+    }
+
+    @Test
+    void aSweptRideStillAnnouncesItselfButNotAsDriverClosed() {
+        Ride r = ride(3);
+        when(rides.findById(r.getId())).thenReturn(Optional.of(r));
+        when(bookings.findByRideIdAndStatus(r.getId(), BookingStatus.CONFIRMED)).thenReturn(List.of());
+
+        service.closeDeparted(r.getId());
+
+        ArgumentCaptor<RideCompletedEvent> event = ArgumentCaptor.forClass(RideCompletedEvent.class);
+        verify(events).publish(eq("ride.completed"), event.capture());
+        // The departure passed either way, but nobody asserted the trip ran.
+        assertThat(event.getValue().driverClosed()).isFalse();
+    }
+
+    @Test
+    void someoneWhoCancelledIsNotTreatedAsAPassenger() {
+        Ride r = ride(3);
+        existing(r);
+        // findByRideIdAndStatus(..., CONFIRMED) already excludes them; this pins
+        // that the event is built from that list and not from every booking,
+        // which would let a no-show review a driver they never met.
+        when(bookings.findByRideIdAndStatus(r.getId(), BookingStatus.CONFIRMED)).thenReturn(List.of());
+
+        service.complete(r.getId(), "driver-1");
+
+        ArgumentCaptor<RideCompletedEvent> event = ArgumentCaptor.forClass(RideCompletedEvent.class);
+        verify(events).publish(eq("ride.completed"), event.capture());
+        assertThat(event.getValue().riderIds()).isEmpty();
     }
 }
