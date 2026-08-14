@@ -32,6 +32,8 @@ spring:
           destination: ride.booking_cancelled
         ride.completed:
           destination: ride.completed
+        ride.changed:
+          destination: ride.changed
       kafka:
         binder:
           brokers: ${KAFKA_BROKERS:localhost:19092}

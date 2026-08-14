@@ -18,6 +18,7 @@ import com.saryom.rideservice.events.RidePostedEvent;
 import com.saryom.rideservice.web.dto.BookSeatsRequest;
 import com.saryom.rideservice.web.dto.CreateRideRequest;
 import com.saryom.rideservice.domain.RideSort;
+import com.saryom.rideservice.events.RideChangedEvent;
 import com.saryom.rideservice.web.dto.UpdateRideRequest;
 import org.springframework.data.domain.Page;
 import org.junit.jupiter.api.BeforeEach;
@@ -455,5 +456,85 @@ class RideServiceTest {
         ArgumentCaptor<RideCompletedEvent> event = ArgumentCaptor.forClass(RideCompletedEvent.class);
         verify(events).publish(eq("ride.completed"), event.capture());
         assertThat(event.getValue().riderIds()).isEmpty();
+    }
+
+    private void booked(Ride r, String... riderIds) {
+        when(bookings.findByRideIdAndStatus(r.getId(), BookingStatus.CONFIRMED)).thenReturn(
+                java.util.Arrays.stream(riderIds)
+                        .map(uid -> new Booking(UUID.randomUUID(), r.getId(), uid, 1, NOW))
+                        .toList());
+    }
+
+    private UpdateRideRequest edit(Instant departAt, String price) {
+        return new UpdateRideRequest("Chicago", "Milwaukee", departAt,
+                new BigDecimal(price), null, null, null, null);
+    }
+
+    @Test
+    void movingTheDepartureTellsEveryoneAlreadyBooked() {
+        // Editing a ride used to be silent. A rider holding a seat on a 9am trip
+        // found out it had moved by turning up — or by not turning up.
+        Ride r = ride(3);
+        existing(r);
+        booked(r, "rider-1", "rider-2");
+
+        service.update(r.getId(), "driver-1", edit(DEPART.minusSeconds(10_800), "12.50"));
+
+        ArgumentCaptor<RideChangedEvent> event = ArgumentCaptor.forClass(RideChangedEvent.class);
+        verify(events).publish(eq("ride.changed"), event.capture());
+        assertThat(event.getValue().riderIds()).containsExactly("rider-1", "rider-2");
+        assertThat(event.getValue().oldDepartAt()).isEqualTo(DEPART);
+        assertThat(event.getValue().newDepartAt()).isEqualTo(DEPART.minusSeconds(10_800));
+    }
+
+    @Test
+    void raisingThePriceTellsEveryoneAlreadyBooked() {
+        Ride r = ride(3);
+        existing(r);
+        booked(r, "rider-1");
+
+        service.update(r.getId(), "driver-1", edit(DEPART, "25.00"));
+
+        ArgumentCaptor<RideChangedEvent> event = ArgumentCaptor.forClass(RideChangedEvent.class);
+        verify(events).publish(eq("ride.changed"), event.capture());
+        assertThat(event.getValue().oldPricePerSeat()).isEqualByComparingTo("12.50");
+        assertThat(event.getValue().newPricePerSeat()).isEqualByComparingTo("25.00");
+    }
+
+    @Test
+    void rewordingARideNobodyHasBookedAnnouncesNothing() {
+        // No confirmed seats means no plan to disrupt.
+        Ride r = ride(3);
+        existing(r);
+
+        service.update(r.getId(), "driver-1", edit(DEPART.minusSeconds(10_800), "99.00"));
+
+        verify(events, never()).publish(eq("ride.changed"), any());
+    }
+
+    @Test
+    void anEditThatChangesNeitherTimeNorPriceAnnouncesNothing() {
+        // A push for every reworded note is a push nobody reads.
+        Ride r = ride(3);
+        existing(r);
+        booked(r, "rider-1");
+
+        service.update(r.getId(), "driver-1", new UpdateRideRequest("Chicago", "Milwaukee",
+                DEPART, new BigDecimal("12.50"), "Now with snacks", null, null, null));
+
+        verify(events, never()).publish(eq("ride.changed"), any());
+    }
+
+    @Test
+    void aPriceWrittenWithDifferentScaleIsNotAChange() {
+        // 12.5 and 12.50 are the same price; comparing with equals() would push
+        // a "price changed" alert at everyone over a formatting difference.
+        Ride r = ride(3);
+        existing(r);
+        booked(r, "rider-1");
+
+        service.update(r.getId(), "driver-1", edit(DEPART, "12.5"));
+
+        verify(events, never()).publish(eq("ride.changed"), any());
     }
 }
