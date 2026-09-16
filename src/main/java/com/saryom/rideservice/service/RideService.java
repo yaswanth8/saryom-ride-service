@@ -167,6 +167,30 @@ public class RideService {
     }
 
     /**
+     * Posts the same route again on a new date.
+     *
+     * <p>Only the driver may repeat their own ride, and the source may be in any
+     * state: repeating a COMPLETED trip is the common case (last Friday's run,
+     * again this Friday), and repeating a CANCELLED one is how a driver reinstates
+     * a trip they called off. The old ride is left untouched either way.
+     *
+     * <p>Publishes {@code ride.posted} exactly as a hand-typed ride would, so
+     * anything downstream treats it as the new ride it is rather than an edit.
+     */
+    @Transactional
+    public RideDetailResponse repeat(UUID id, String uid, Instant departAt) {
+        Ride source = load(id);
+        source.requireDriver(uid);
+
+        Ride saved = rides.save(source.repeatOn(departAt, clock.instant()));
+        events.publish("ride.posted", RidePostedEvent.of(saved.getId(), uid,
+                saved.getOriginText(), saved.getDestinationText(),
+                saved.getDepartAt(), saved.getSeatsTotal()));
+        return RideDetailResponse.from(saved, uid, null, List.of(),
+                rides.countByDriverIdAndStatus(uid, RideStatus.COMPLETED));
+    }
+
+    /**
      * Edits a ride, telling anyone already booked on it what changed.
      *
      * <p>The old departure and price are captured before the update because they

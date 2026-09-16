@@ -235,6 +235,31 @@ public class Ride {
         this.updatedAt = now;
     }
 
+    /**
+     * A fresh ride on the same route, leaving at {@code departAt}.
+     *
+     * <p>Someone driving the same commute every week had to re-enter both
+     * endpoints, both coordinate pairs, seats, price, bag size, smoking, pets
+     * and notes every single time — the app knew all of it and asked anyway.
+     *
+     * <p>What is deliberately NOT carried over is everything specific to the
+     * trip that already happened: the new ride starts OPEN with every seat free
+     * and no bookings, whatever became of the old one. Copying seat state would
+     * silently sell a seat twice; copying bookings would move riders onto a
+     * journey they never agreed to.
+     *
+     * <p>The route is copied rather than referenced, so editing the new ride
+     * cannot rewrite the old one's history.
+     */
+    public Ride repeatOn(Instant departAt, Instant now) {
+        if (!departAt.isAfter(now)) {
+            throw new ConflictException("A repeated ride must leave in the future");
+        }
+        return new Ride(UUID.randomUUID(), driverId, originText, originLat, originLng,
+                destinationText, destinationLat, destinationLng, departAt,
+                seatsTotal, pricePerSeat, notes, bagSize, smokingAllowed, petsAllowed, now);
+    }
+
     public void requireDriver(String uid) {
         if (!isDrivenBy(uid)) {
             throw new AccessDeniedException("Only the driver can change this ride");
