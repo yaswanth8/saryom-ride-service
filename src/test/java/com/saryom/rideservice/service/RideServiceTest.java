@@ -537,4 +537,86 @@ class RideServiceTest {
 
         verify(events, never()).publish(eq("ride.changed"), any());
     }
+
+    @Test
+    void repeatingARideCopiesTheRouteButNotTheTrip() {
+        Ride r = ride(3);
+        r.book(2, NOW);                 // two seats already sold on the old ride
+        existing(r);
+        Instant nextWeek = DEPART.plusSeconds(7 * 86_400);
+
+        ArgumentCaptor<Ride> saved = ArgumentCaptor.forClass(Ride.class);
+        service.repeat(r.getId(), "driver-1", nextWeek);
+        verify(rides).save(saved.capture());
+        Ride fresh = saved.getValue();
+
+        // The route and the driver's settings come along.
+        assertThat(fresh.getOriginText()).isEqualTo("Chicago");
+        assertThat(fresh.getDestinationText()).isEqualTo("Milwaukee");
+        assertThat(fresh.getPricePerSeat()).isEqualByComparingTo("12.50");
+        assertThat(fresh.getDepartAt()).isEqualTo(nextWeek);
+
+        // The trip that already happened does not: every seat is free again.
+        assertThat(fresh.getId()).isNotEqualTo(r.getId());
+        assertThat(fresh.getSeatsAvailable()).isEqualTo(3);
+        assertThat(fresh.getStatus()).isEqualTo(RideStatus.OPEN);
+    }
+
+    @Test
+    void repeatingLeavesTheOriginalAlone() {
+        Ride r = ride(3);
+        r.book(2, NOW);
+        existing(r);
+
+        service.repeat(r.getId(), "driver-1", DEPART.plusSeconds(7 * 86_400));
+
+        assertThat(r.getSeatsAvailable()).isEqualTo(1);
+        assertThat(r.getDepartAt()).isEqualTo(DEPART);
+    }
+
+    @Test
+    void repeatAnnouncesANewRideNotAnEdit() {
+        Ride r = ride(3);
+        existing(r);
+
+        service.repeat(r.getId(), "driver-1", DEPART.plusSeconds(7 * 86_400));
+
+        verify(events).publish(eq("ride.posted"), any(RidePostedEvent.class));
+    }
+
+    @Test
+    void onlyTheDriverMayRepeatTheirRide() {
+        Ride r = ride(3);
+        existing(r);
+
+        assertThatThrownBy(() ->
+                service.repeat(r.getId(), "someone-else", DEPART.plusSeconds(7 * 86_400)))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(rides, never()).save(any());
+    }
+
+    @Test
+    void aCompletedRideIsTheNormalThingToRepeat() {
+        // Last Friday's run, again this Friday — the common case, so it must
+        // not be blocked the way editing a finished ride is.
+        Ride r = ride(3);
+        r.complete("driver-1", DEPART.plusSeconds(3_600));
+        existing(r);
+
+        service.repeat(r.getId(), "driver-1", DEPART.plusSeconds(7 * 86_400));
+
+        ArgumentCaptor<Ride> saved = ArgumentCaptor.forClass(Ride.class);
+        verify(rides).save(saved.capture());
+        assertThat(saved.getValue().getStatus()).isEqualTo(RideStatus.OPEN);
+    }
+
+    @Test
+    void aRepeatedRideCannotLeaveInThePast() {
+        Ride r = ride(3);
+        existing(r);
+
+        assertThatThrownBy(() -> service.repeat(r.getId(), "driver-1", NOW.minusSeconds(60)))
+                .isInstanceOf(ConflictException.class);
+        verify(rides, never()).save(any());
+    }
 }

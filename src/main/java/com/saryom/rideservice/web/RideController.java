@@ -6,6 +6,7 @@ import com.saryom.rideservice.service.RideService;
 import com.saryom.rideservice.web.dto.BookSeatsRequest;
 import com.saryom.rideservice.web.dto.BookingResponse;
 import com.saryom.rideservice.web.dto.CreateRideRequest;
+import com.saryom.rideservice.web.dto.RepeatRideRequest;
 import com.saryom.rideservice.web.dto.RideCardResponse;
 import com.saryom.rideservice.web.dto.RideDetailResponse;
 import com.saryom.rideservice.web.dto.UpdateRideRequest;
@@ -98,6 +99,14 @@ public class RideController {
     @DeleteMapping("/{id}/bookings/{bookingId}")
     public BookingResponse cancelBooking(@PathVariable UUID id, @PathVariable UUID bookingId) {
         return rideService.cancelBooking(id, bookingId, CurrentUser.requireUid());
+    }
+
+    /** Posts the same route again on a new date. Driver only. */
+    @PostMapping("/{id}/repeat")
+    @ResponseStatus(HttpStatus.CREATED)
+    public RideDetailResponse repeat(@PathVariable UUID id,
+                                     @Valid @RequestBody RepeatRideRequest req) {
+        return rideService.repeat(id, CurrentUser.requireUid(), req.departAt());
     }
 
     @PostMapping("/{id}/complete")
