@@ -18,3 +18,18 @@ jobs:
           cache: maven
       - name: Build and test
         run: mvn -B verify
+
+  image:
+    name: Docker image and start-up cache
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        shell: bash
+        run: docker build --progress=plain -t service . 2>&1 | tee build.log
+      - name: The start-up cache was recorded
+        run: grep -q "Start-up cache recorded" build.log
+      - name: The cache loads within Render's free-instance limits
+        run: >-
+          docker run --rm --memory=512m --cpus=0.1 --entrypoint sh service
+          -c 'java $JAVA_OPTS -XX:AOTCache=app.aot -cp app.jar -version'
