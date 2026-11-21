@@ -5,7 +5,9 @@
 # once every bean is created and before it opens a port or touches the network
 # (spring.context.exit=onRefresh). Nothing is reachable at build time, so the
 # database steps are switched off and Firebase gets a throwaway key; none of
-# that changes which classes load, which is all the cache records.
+# that changes which classes load, which is all the cache records. OTLP export
+# is switched on (towards an address that refuses connections) so the exporter
+# classes are in the cache for services that run with OTLP_ENABLED=true.
 #
 # Never fails the build: without a cache the service still starts, just slower.
 set -u
@@ -13,6 +15,7 @@ log=$(mktemp)
 SPRING_PROFILES_ACTIVE="$TRAINING_PROFILES" \
 FIREBASE_SERVICE_ACCOUNT_JSON="$(cat /tmp/training-sa.json)" \
 DB_URL="jdbc:postgresql://127.0.0.1:1/training" \
+OTLP_ENABLED=true OTLP_ENDPOINT=http://127.0.0.1:1 \
 java $JAVA_OPTS -XX:AOTCacheOutput=app.aot \
     -Dspring.context.exit=onRefresh \
     -Dspring.flyway.enabled=false \

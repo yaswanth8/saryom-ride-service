@@ -61,6 +61,60 @@ management:
     health:
       probes:
         enabled: true
+  # Observability: metrics, traces and logs over OTLP to Grafana Cloud's free
+  # tier (or any OTLP backend). Off unless OTLP_ENABLED=true, so local runs,
+  # tests and the Docker build never try to reach a collector. Setup and the
+  # env vars to set: saryom-api-gateway/docs/observability.md.
+  tracing:
+    sampling:
+      # Traffic is low, so keep every trace. Lower it if the free tier fills up.
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+    export:
+      otlp:
+        enabled: ${OTLP_ENABLED:false}
+  logging:
+    export:
+      otlp:
+        enabled: ${OTLP_ENABLED:false}
+  otlp:
+    metrics:
+      export:
+        enabled: ${OTLP_ENABLED:false}
+        url: ${OTLP_ENDPOINT:http://localhost:4318}/v1/metrics
+        headers:
+          Authorization: ${OTLP_AUTH_HEADER:}
+        # One data point per series per minute, the free tier's included rate.
+        step: 60s
+        # Prometheus convention, and what the committed dashboard queries.
+        base-time-unit: seconds
+  opentelemetry:
+    resource-attributes:
+      service.namespace: saryom
+      deployment.environment.name: ${DEPLOY_ENV:local}
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTLP_ENDPOINT:http://localhost:4318}/v1/traces
+          headers:
+            Authorization: ${OTLP_AUTH_HEADER:}
+    logging:
+      export:
+        otlp:
+          endpoint: ${OTLP_ENDPOINT:http://localhost:4318}/v1/logs
+          headers:
+            Authorization: ${OTLP_AUTH_HEADER:}
+  metrics:
+    distribution:
+      # A handful of fixed latency buckets, enough for p50/p95/p99 panels and
+      # alerts. The defaults would add ~70 series per endpoint and use up the
+      # free tier's 10k series. 30s and 60s catch Render cold starts.
+      slo:
+        http.server.requests: 50ms,100ms,250ms,500ms,1s,2500ms,5s,10s,30s,60s
+  observations:
+    enable:
+      # Spring Security wraps every request in a dozen filter-chain spans;
+      # they bury the spans that matter and use up the trace allowance.
+      spring.security: false
 
 ---
 spring:
