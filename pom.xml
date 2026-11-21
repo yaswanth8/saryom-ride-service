@@ -19,6 +19,9 @@
 
   <properties>
     <java.version>25</java.version>
+    <!-- Matches the OpenTelemetry SDK (1.55) that Spring Boot 4.0.x manages. -->
+    <otel-instrumentation.version>2.21.0-alpha</otel-instrumentation.version>
+    <protobuf.version>4.32.0</protobuf.version>
     <testcontainers.version>1.21.4</testcontainers.version>
     <spring-cloud.version>2025.1.2</spring-cloud.version>
     <firebase-admin.version>9.4.3</firebase-admin.version>
@@ -40,6 +43,22 @@
         <version>${testcontainers.version}</version>
         <type>pom</type>
         <scope>import</scope>
+      </dependency>
+      <!--
+        The OTLP metrics exporter is built on protobuf 4, but firebase-admin pulls
+        in protobuf 3 and Maven keeps the nearer one, which fails at start-up as
+        soon as OTLP_ENABLED=true. Token verification does not use protobuf, and
+        the Firestore and Storage clients that do are never called here.
+      -->
+      <dependency>
+        <groupId>com.google.protobuf</groupId>
+        <artifactId>protobuf-java</artifactId>
+        <version>${protobuf.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.protobuf</groupId>
+        <artifactId>protobuf-java-util</artifactId>
+        <version>${protobuf.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
@@ -64,6 +83,33 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <!--
+      Observability: Micrometer metrics, Micrometer Tracing on the OpenTelemetry
+      bridge, and OTLP exporters for metrics, traces and logs. Exporting is off
+      unless OTLP_ENABLED=true (see application.yml).
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-opentelemetry</artifactId>
+      <exclusions>
+        <!-- Send with the JDK's own HTTP client instead of OkHttp: one less
+           library (and the Kotlin runtime) in a 512 MB instance. -->
+        <exclusion>
+          <groupId>io.opentelemetry</groupId>
+          <artifactId>opentelemetry-exporter-sender-okhttp</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-exporter-sender-jdk</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry.instrumentation</groupId>
+      <artifactId>opentelemetry-logback-appender-1.0</artifactId>
+      <version>${otel-instrumentation.version}</version>
     </dependency>
 
     <dependency>
