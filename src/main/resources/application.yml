@@ -37,6 +37,10 @@ spring:
       kafka:
         binder:
           brokers: ${KAFKA_BROKERS:localhost:19092}
+          # Carry the W3C traceparent through Kafka headers so the consumer's work joins
+          # the publisher's trace. Off by default in the Kafka binder; the RabbitMQ binder
+          # (used in production) already does this whenever tracing is on.
+          enable-observation: true
 
 server:
   port: ${PORT:8087}
