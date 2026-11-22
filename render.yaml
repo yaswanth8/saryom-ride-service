@@ -1,5 +1,6 @@
 # Render Blueprint — saryom-ride-service
-# Free-tier phase: dev,rabbit profile (stub auth + CloudAMQP broker), Neon Postgres.
+# Matches the live service: prod,rabbit profile (real Firebase token checks +
+# CloudAMQP broker), Neon Postgres. `dev` (stub dev:<uid> tokens) is for local runs only.
 # Secrets (sync:false) are entered in the Render dashboard on first deploy.
 services:
   - type: web
@@ -12,11 +13,16 @@ services:
     dockerfilePath: ./Dockerfile
     envVars:
       - key: SPRING_PROFILES_ACTIVE
-        value: dev,rabbit
+        value: prod,rabbit
+      # Service-account JSON used to verify Firebase ID tokens.
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      # OTLP_ENABLED, OTLP_ENDPOINT, OTLP_AUTH_HEADER, DEPLOY_ENV (shared env group)
+      - fromGroup: saryom-observability
       # Keep the connection pool tiny — services share Neon's free connection budget.
       - key: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE
         value: "3"
-      # jdbc:postgresql://<neon-host>/<db>?currentSchema=food&sslmode=require
+      # jdbc:postgresql://<neon-host>/<db>?currentSchema=rides&sslmode=require
       - key: DB_URL
         sync: false
       - key: DB_USER
